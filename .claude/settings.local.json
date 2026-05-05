@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(just --version)",
+      "Bash(docker --version)",
+      "Bash(just test *)",
+      "Bash(docker compose *)",
+      "Bash(docker exec *)",
+      "Bash(echo \"---exit: $?\")",
+      "PowerShell(netsh interface *)",
+      "Bash(curl -s -o /dev/null -w \"GET /ping → %{http_code}\\\\n\" http://192.168.1.117:8080/ping)",
+      "Bash(curl -sL -o /dev/null -w \"GET / → %{http_code} \\(final: %{url_effective}\\)\\\\n\" http://192.168.1.117:8080/)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.keycloak.org)",
+      "Bash(just init *)",
+      "Bash(gomplate --version)",
+      "PowerShell(winget search *)",
+      "PowerShell($ProgressPreference = 'SilentlyContinue'; $r = Invoke-RestMethod 'https://api.github.com/repos/hairyhenderson/gomplate/releases/latest'; $r.assets | Select-Object name | Format-Table -AutoSize | Out-String -Width 200)",
+      "Bash(gomplate --datasource env='.env?type=application/x-env' --in '{{ \\(ds \"env\"\\).HOST_IP }}:{{ \\(ds \"env\"\\).HOST_PORT }}')"
+    ]
+  }
+}
