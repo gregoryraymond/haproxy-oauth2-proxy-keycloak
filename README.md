@@ -4,9 +4,8 @@
 as the protected upstream. Deployable two ways:
 
 - `docker-compose/` — single-host docker-compose stack.
-- `helm/oauth2-keycloak/` — Helm chart for Kubernetes (designed against
-  Red Hat MicroShift, whose router is HAProxy under the hood, so the
-  edge layer collapses into a stock `Ingress`).
+- `helm/oauth2-keycloak/` — Helm chart for Kubernetes; the edge HAProxy
+  layer collapses into a stock `Ingress` resource.
 
 ```
 browser
@@ -28,17 +27,16 @@ Requires Docker Desktop (or Docker Engine + compose plugin) and
 [`just`](https://github.com/casey/just).
 
 ```sh
-just init       # detect LAN IP, write .env
-just up         # docker compose up -d --wait
-just urls       # print the URLs to open
-just test       # headed Playwright run: visit /, log in, assert userinfo
+just compose up       # detect LAN IP, render realm, docker compose up -d --wait
+just compose urls     # print the URLs to open
+just test-compose     # bring stack up → run headed Playwright → tear down
 ```
 
-The `just test` recipe brings the stack up, installs `@playwright/test` + a
-local chromium, and drives the full login flow in a **visible** browser
-(`slowMo` + per-step pauses so you can watch). Tweak pacing with
-`just test slow_mo=300 step_pause_ms=500`. For CI, use `just test-ci`
-(headless, no pauses).
+`test-compose` installs `@playwright/test` + a local chromium and drives
+the full login flow in a **visible** browser (`slowMo` + per-step pauses
+so you can watch). Tweak pacing with `just test-compose '' 300 500` (the
+first arg is reserved for `--keep`; pass it to leave the stack running
+after the test). For CI, use `just test-compose-ci` (headless, no pauses).
 
 Default test login (from `keycloak/realm-export.json`):
 
@@ -68,33 +66,40 @@ Everything tunable lives in `.env` (created from `.env.example`):
 To rebind to a new IP (e.g. after switching networks):
 
 ```sh
-just init && just up
+just compose down && just compose up
 ```
 
 ## Files
 
 | path | what |
 | --- | --- |
+| `Dockerfiles/keycloak/Dockerfile` | Two-stage build that pre-imports the realm into Keycloak's H2 db |
+| `Dockerfiles/keycloak/realm-export.template.json` | Single source of truth for the realm (gomplate-templated) |
 | `docker-compose/docker-compose.yml` | Service definitions |
 | `docker-compose/haproxy/haproxy.cfg` | Edge routing rules |
 | `docker-compose/oauth2-proxy/oauth2-proxy.cfg` | oauth2-proxy config (secrets via env) |
-| `docker-compose/keycloak/realm-export.json` | Pre-imported realm `proxy` with client + test user |
 | `docker-compose/nginx/default.conf`, `docker-compose/nginx/html/*` | Protected landing pages |
 | `helm/oauth2-keycloak/` | Helm chart (Keycloak + oauth2-proxy + nginx + Ingress) |
-| `justfile` | `init`, `up`, `down`, `logs`, `urls`, `cookie-secret`, ... |
+| `justfile` | Top-level recipes (test-compose, test-helm, cookie-secret) + `mod` imports for compose/helm/tests |
 | `tests/auth.spec.ts` | Playwright login-flow test |
 
 ## Helm / Kubernetes
 
 ```sh
+just helm up           # ensures ingress-nginx, then helm upgrade --install
+just helm urls         # print the URLs
+just test-helm         # deploy → run headed Playwright → tear down
+```
+
+Or directly:
+
+```sh
 helm install auth2-proxy ./helm/oauth2-keycloak \
-    --set host=auth2.example.com
+    --set host=127.0.0.1
 ```
 
 The chart drops the dedicated HAProxy pod and uses an `Ingress` resource
-instead. On MicroShift / OpenShift the Ingress is consumed by the
-HAProxy-based router; on stock Kubernetes it works with `ingress-nginx`
-or any other Ingress controller.
+instead, so it works with `ingress-nginx` or any other Ingress controller.
 
 See `helm/oauth2-keycloak/values.yaml` for tunables.
 
@@ -103,8 +108,15 @@ See `helm/oauth2-keycloak/values.yaml` for tunables.
 - **Plain HTTP** for the demo. Behind real TLS, set `cookie_secure = true`
   in `docker-compose/oauth2-proxy/oauth2-proxy.cfg` and update
   `X-Forwarded-Proto` in `docker-compose/haproxy/haproxy.cfg` to `https`.
-- The realm-export uses wildcard redirect URIs (`http://*/oauth/callback`)
-  so any `HOST_IP` works without re-importing.
-- Keycloak's first start with `--import-realm` takes ~30s; HAProxy's
-  health check will mark the backend up once Keycloak's `/auth/health/ready`
-  returns 200.
+- The realm-export pins `redirectUris` to the exact `HOST_IP[:HOST_PORT]`
+  (plus `localhost` / `127.0.0.1` for the compose stack). It is re-rendered
+  by `just compose init` / by the helm chart on each install — never use
+  a `http://*/oauth/callback` wildcard, which lets any host on the network
+  intercept the OAuth code.
+- Both the compose stack and the helm chart use a single locally-built
+  Keycloak image (`Dockerfiles/keycloak/Dockerfile`, tagged
+  `auth2-proxy/keycloak:local`) with `kc.sh build` pre-run and the realm
+  pre-imported into the embedded H2 db, so the container starts in a few
+  seconds instead of ~30s. `just build-keycloak <host> <port>` (or the
+  upstream recipes `just compose init` / `just helm up` which call it)
+  re-renders the realm and rebuilds the image when host/port changes.

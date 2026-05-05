@@ -40,15 +40,27 @@ _detect-ip:
     mv .env.new .env
     echo "HOST_IP=$detected written to docker-compose/.env"
 
-# Render the Keycloak realm export from its gomplate template, deriving
-# PUBLIC_URL from the freshly-written .env. Keycloak 24+ doesn't allow
-# host-level wildcards in redirectUris, so the URL is materialized here.
+# Build the baked Keycloak image, deriving HOST_IP / HOST_PORT from .env
+# so redirect URIs in the realm match what the browser will actually hit.
+[windows]
 init: _detect-ip
-    gomplate \
-        --datasource 'env=.env?type=application/x-env' \
-        --file keycloak/realm-export.template.json \
-        --out  keycloak/realm-export.json
-    @echo "Rendered docker-compose/keycloak/realm-export.json"
+    #!pwsh
+    $ErrorActionPreference = 'Stop'
+    $PSNativeCommandUseErrorActionPreference = $true
+    $env_kv = Get-Content .env | Where-Object { $_ -match '^[A-Z_]+=' } | ForEach-Object { $_ -split '=', 2 }
+    $env_table = @{}
+    Get-Content .env | Where-Object { $_ -match '^[A-Z_]+=' } | ForEach-Object {
+        $k, $v = $_ -split '=', 2
+        $env_table[$k] = $v
+    }
+    just build-keycloak $env_table['HOST_IP'] $env_table['HOST_PORT']
+
+[unix]
+init: _detect-ip
+    #!/usr/bin/env bash
+    set -euo pipefail
+    set -a; source .env; set +a
+    just build-keycloak "$HOST_IP" "$HOST_PORT"
 
 # Bring the stack up in the background and wait for healthchecks.
 up: init

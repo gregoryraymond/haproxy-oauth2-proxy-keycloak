@@ -15,22 +15,18 @@ spec:
       labels:
         {{- include "oauth2-keycloak.labels" . | nindent 8 }}
         app.kubernetes.io/component: keycloak
-      annotations:
-        # Trigger rollout when the realm changes.
-        checksum/realm: {{ include (print $.Template.BasePath "/keycloak-realm-configmap.yaml") . | sha256sum }}
     spec:
       containers:
         - name: keycloak
+          # `just build-keycloak` produces this image with the realm pre-imported
+          # into the embedded H2 db, so the container starts in seconds. Image
+          # CMD is `start --optimized` — no per-boot import or augmentation.
           image: "{{ .Values.keycloak.image.repository }}:{{ .Values.keycloak.image.tag }}"
-          args: ["start-dev", "--import-realm"]
+          imagePullPolicy: {{ .Values.keycloak.image.pullPolicy }}
           envFrom:
             - secretRef:
                 name: {{ include "oauth2-keycloak.fullname" . }}-keycloak
           env:
-            - name: KC_HTTP_ENABLED
-              value: "true"
-            - name: KC_HTTP_RELATIVE_PATH
-              value: /auth
             - name: KC_HOSTNAME
               value: {{ .Values.host | quote }}
             {{- if .Values.port }}
@@ -43,32 +39,36 @@ spec:
               value: "false"
             - name: KC_PROXY_HEADERS
               value: xforwarded
-            - name: KC_HEALTH_ENABLED
-              value: "true"
+            # JVM tuning for low-memory single-user demo. Default kc.sh
+            # GC is ParallelGC; we negate it then enable Serial. JAVA_OPTS_APPEND
+            # is processed after the heap defaults so the order is correct.
+            - name: JAVA_OPTS_APPEND
+              value: "-XX:-UseParallelGC -XX:+UseSerialGC"
+            - name: JAVA_OPTS_KC_HEAP
+              value: >-
+                -Xms32m -Xmx96m
+                -XX:MetaspaceSize=48m -XX:MaxMetaspaceSize=112m
+                -XX:MaxDirectMemorySize=16m
+                -XX:MinHeapFreeRatio=5 -XX:MaxHeapFreeRatio=10
           ports:
             - name: http
               containerPort: 8080
+          # Keycloak's baked image starts in ~7-9s. Poll every 2s after a
+          # 4s warm-up so kubelet flips Ready as soon as the server binds,
+          # not on the next 5s tick.
           readinessProbe:
             httpGet:
               path: /auth/health/ready
               port: http
-            initialDelaySeconds: 30
-            periodSeconds: 10
-            timeoutSeconds: 5
+            initialDelaySeconds: 4
+            periodSeconds: 2
+            timeoutSeconds: 2
             failureThreshold: 30
           livenessProbe:
             httpGet:
               path: /auth/health/live
               port: http
-            initialDelaySeconds: 60
+            initialDelaySeconds: 30
             periodSeconds: 20
-          volumeMounts:
-            - name: realm
-              mountPath: /opt/keycloak/data/import
-              readOnly: true
           resources:
             {{- toYaml .Values.keycloak.resources | nindent 12 }}
-      volumes:
-        - name: realm
-          configMap:
-            name: {{ include "oauth2-keycloak.fullname" . }}-keycloak-realm

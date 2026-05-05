@@ -30,10 +30,13 @@
       "serviceAccountsEnabled": false,
       "consentRequired": false,
       "frontchannelLogout": false,
+      {{- $port := (ds "env").HOST_PORT -}}
+      {{- $portSuffix := "" -}}
+      {{- if $port }}{{ $portSuffix = printf ":%s" $port }}{{ end -}}
       "redirectUris": [
-        "http://{{ (ds "env").HOST_IP }}:{{ (ds "env").HOST_PORT }}/oauth/callback",
-        "http://localhost:{{ (ds "env").HOST_PORT }}/oauth/callback",
-        "http://127.0.0.1:{{ (ds "env").HOST_PORT }}/oauth/callback"
+        "http://{{ (ds "env").HOST_IP }}{{ $portSuffix }}/oauth/callback",
+        "http://localhost{{ $portSuffix }}/oauth/callback",
+        "http://127.0.0.1{{ $portSuffix }}/oauth/callback"
       ],
       "webOrigins": ["+"],
       "attributes": {

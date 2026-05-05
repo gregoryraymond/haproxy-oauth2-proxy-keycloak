@@ -9,5 +9,5 @@ Public base URL: {{ include "oauth2-keycloak.publicUrl" . }}
 
 Test user (from realm-export): test / test
 
-Wait for the keycloak pod's readiness probe to pass (~30s on first start)
-before browsing — `kubectl rollout status deploy/{{ include "oauth2-keycloak.fullname" . }}-keycloak`.
+The keycloak pod boots in ~7-9s thanks to the pre-baked realm + kc.sh build.
+`helm upgrade --wait` already blocked on rollout, so it's ready right now.

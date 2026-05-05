@@ -9,12 +9,19 @@ namespace := "auth2-proxy"
 default:
     @just --list --justfile {{justfile()}}
 
-# Ensure ingress-nginx is installed in the cluster (no-op if already present).
-# Docker Desktop's Kubernetes routes LoadBalancer services to localhost:80,
-# which is why the default port is "" (= standard 80 plain / 443 TLS).
+# Ensure ingress-nginx is installed and Ready. Skips the helm operations
+# entirely if it's already healthy (which is the common case on `just helm up`
+# after the first install — saves ~15-30s of `helm repo update` + `--wait`
+# on every subsequent run).
 _ensure-ingress:
     #!/usr/bin/env bash
     set -euo pipefail
+    if helm status ingress-nginx -n ingress-nginx >/dev/null 2>&1 && \
+       kubectl -n ingress-nginx wait --for=condition=available \
+           deploy/ingress-nginx-controller --timeout=5s >/dev/null 2>&1; then
+        echo "ingress-nginx already healthy — skipping install."
+        exit 0
+    fi
     helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx >/dev/null 2>&1 || true
     helm repo update ingress-nginx >/dev/null
     helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
@@ -23,16 +30,19 @@ _ensure-ingress:
         --set controller.ingressClassResource.default=true \
         --wait --timeout 5m
 
-# Install/upgrade the chart and wait for rollout.
+# Install/upgrade the chart and wait for rollout. Builds the baked Keycloak
+# image first so the redirect URIs in the imported realm match `host:port`.
+# `helm --wait` already blocks on Deployment readiness; no need for a
+# follow-up `kubectl rollout status`.
 up host="127.0.0.1" port="": _ensure-ingress
     #!/usr/bin/env bash
     set -euo pipefail
+    just build-keycloak '{{host}}' '{{port}}'
     helm upgrade --install {{release}} ./oauth2-keycloak \
         --namespace {{namespace}} --create-namespace \
         --set host={{host}} \
         --set port={{port}} \
-        --wait --timeout 5m
-    kubectl -n {{namespace}} rollout status deploy --timeout=5m
+        --wait --timeout 2m
 
 # Uninstall the chart (leaves ingress-nginx in place).
 down:

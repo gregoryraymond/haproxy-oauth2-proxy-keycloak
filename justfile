@@ -9,55 +9,128 @@ mod tests   'tests/tests.just'
 default:
     @just --list
 
-# Bring the compose stack up and run the headed Playwright suite against it.
-test-compose slow_mo="800" step_pause_ms="1500":
+# test-* recipes: bring stack up → run tests → tear stack down.
+# Pass `--keep` as the first arg to leave the stack running for poking at.
+
+[windows]
+test-compose keep="" slow_mo="800" step_pause_ms="1500":
+    #!pwsh
+    $ErrorActionPreference = 'Stop'
+    $PSNativeCommandUseErrorActionPreference = $true
     just compose up
+    try {
+        just tests headed {{slow_mo}} {{step_pause_ms}}
+    } finally {
+        if ('{{keep}}' -ne '--keep') { just compose down }
+    }
+
+[unix]
+test-compose keep="" slow_mo="800" step_pause_ms="1500":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just compose up
+    trap '[ "{{keep}}" = "--keep" ] || just compose down' EXIT
     just tests headed {{slow_mo}} {{step_pause_ms}}
 
-# Same as test-compose but headless (for CI / quick checks).
-test-compose-ci:
+[windows]
+test-compose-ci keep="":
+    #!pwsh
+    $ErrorActionPreference = 'Stop'
+    $PSNativeCommandUseErrorActionPreference = $true
     just compose up
+    try {
+        just tests ci
+    } finally {
+        if ('{{keep}}' -ne '--keep') { just compose down }
+    }
+
+[unix]
+test-compose-ci keep="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just compose up
+    trap '[ "{{keep}}" = "--keep" ] || just compose down' EXIT
     just tests ci
 
-# Bring the helm stack up and run the headed Playwright suite against it.
 [windows]
-test-helm host="127.0.0.1" port="" slow_mo="800" step_pause_ms="1500":
+test-helm keep="" host="127.0.0.1" port="" slow_mo="800" step_pause_ms="1500":
     #!pwsh
     $ErrorActionPreference = 'Stop'
     $PSNativeCommandUseErrorActionPreference = $true
     just helm up '{{host}}' '{{port}}'
     $base = if ('{{port}}') { "http://{{host}}:{{port}}" } else { "http://{{host}}" }
     $env:BASE_URL = $base
-    just tests headed {{slow_mo}} {{step_pause_ms}}
+    try {
+        just tests headed {{slow_mo}} {{step_pause_ms}}
+    } finally {
+        if ('{{keep}}' -ne '--keep') { just helm down }
+    }
 
 [unix]
-test-helm host="127.0.0.1" port="" slow_mo="800" step_pause_ms="1500":
+test-helm keep="" host="127.0.0.1" port="" slow_mo="800" step_pause_ms="1500":
     #!/usr/bin/env bash
     set -euo pipefail
     just helm up '{{host}}' '{{port}}'
     base="http://{{host}}"
     [ -n "{{port}}" ] && base="$base:{{port}}"
+    trap '[ "{{keep}}" = "--keep" ] || just helm down' EXIT
     BASE_URL="$base" just tests headed {{slow_mo}} {{step_pause_ms}}
 
-# Same as test-helm but headless.
 [windows]
-test-helm-ci host="127.0.0.1" port="":
+test-helm-ci keep="" host="127.0.0.1" port="":
     #!pwsh
     $ErrorActionPreference = 'Stop'
     $PSNativeCommandUseErrorActionPreference = $true
     just helm up '{{host}}' '{{port}}'
     $base = if ('{{port}}') { "http://{{host}}:{{port}}" } else { "http://{{host}}" }
     $env:BASE_URL = $base
-    just tests ci
+    try {
+        just tests ci
+    } finally {
+        if ('{{keep}}' -ne '--keep') { just helm down }
+    }
 
 [unix]
-test-helm-ci host="127.0.0.1" port="":
+test-helm-ci keep="" host="127.0.0.1" port="":
     #!/usr/bin/env bash
     set -euo pipefail
     just helm up '{{host}}' '{{port}}'
     base="http://{{host}}"
     [ -n "{{port}}" ] && base="$base:{{port}}"
+    trap '[ "{{keep}}" = "--keep" ] || just helm down' EXIT
     BASE_URL="$base" just tests ci
+
+# Build the custom Keycloak image (`auth2-proxy/keycloak:local`) with the
+# realm pre-imported into the embedded H2 db. Same image is used by both
+# the docker-compose stack and the helm chart; both flows call this recipe
+# with their own host/port so the baked redirect URIs are correct.
+[windows]
+build-keycloak host="127.0.0.1" port="":
+    #!pwsh
+    $ErrorActionPreference = 'Stop'
+    $PSNativeCommandUseErrorActionPreference = $true
+    $ctx = Join-Path $env:TEMP 'auth2-proxy-keycloak-build'
+    if (Test-Path $ctx) { Remove-Item $ctx -Recurse -Force }
+    New-Item -ItemType Directory -Path $ctx | Out-Null
+    Set-Content -Path (Join-Path $ctx '.env') -Value "HOST_IP={{host}}`nHOST_PORT={{port}}"
+    gomplate `
+        --datasource "env=$ctx/.env?type=application/x-env" `
+        --file Dockerfiles/keycloak/realm-export.template.json `
+        --out  "$ctx/realm-export.json"
+    docker build -f Dockerfiles/keycloak/Dockerfile -t auth2-proxy/keycloak:local $ctx
+
+[unix]
+build-keycloak host="127.0.0.1" port="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ctx=$(mktemp -d)
+    trap 'rm -rf "$ctx"' EXIT
+    printf 'HOST_IP=%s\nHOST_PORT=%s\n' '{{host}}' '{{port}}' > "$ctx/.env"
+    gomplate \
+        --datasource "env=$ctx/.env?type=application/x-env" \
+        --file Dockerfiles/keycloak/realm-export.template.json \
+        --out  "$ctx/realm-export.json"
+    docker build -f Dockerfiles/keycloak/Dockerfile -t auth2-proxy/keycloak:local "$ctx"
 
 # Generate a fresh 32-char cookie secret.
 [windows]

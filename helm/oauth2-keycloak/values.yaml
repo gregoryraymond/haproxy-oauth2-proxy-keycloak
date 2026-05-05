@@ -20,8 +20,7 @@ tls:
   secretName: ""
 
 ingress:
-  # className: nginx                  # ingress-nginx
-  # className: openshift-default      # MicroShift / OpenShift router (HAProxy)
+  # className: nginx     # ingress-nginx
   className: ""
   annotations:
     # oauth2-proxy's session cookie blows past ingress-nginx's default 4k
@@ -35,12 +34,28 @@ ingress:
 
 keycloak:
   image:
-    repository: quay.io/keycloak/keycloak
-    tag: "24.0"
+    # Built locally by `just build-keycloak <host> <port>` (top-level recipe).
+    # The realm is pre-imported into the image's embedded H2 db so the pod
+    # starts in seconds with no runtime --import-realm step.
+    repository: auth2-proxy/keycloak
+    tag: local
+    # IfNotPresent so docker-desktop's k8s reuses the local docker image
+    # without trying to fetch it from a registry.
+    pullPolicy: IfNotPresent
   admin:
     username: admin
     password: admin
-  resources: {}
+  # JVM is pinned (Xmx=96m + Metaspace=112m + Direct=16m + native ~30m).
+  # Steady-state lands ~250Mi but startup briefly spikes through Infinispan
+  # / Quarkus init — k8s OOMKills on any breach, so 320Mi gives ~70Mi headroom.
+  # (docker-compose's `mem_limit` tolerates transient overage and runs fine
+  # at 256m; k8s does not.)
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      memory: 320Mi
 
 oauth2Proxy:
   image:
@@ -51,10 +66,21 @@ oauth2Proxy:
   clientSecret: oauth2-proxy-secret
   # MUST be 16, 24, or 32 bytes. Generate with: openssl rand -hex 16
   cookieSecret: "0123456789abcdef0123456789abcdef"
-  resources: {}
+  # Tiny Go binary; ~30MB RSS idle.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
 
 nginx:
   image:
     repository: nginx
     tag: 1.27-alpine
-  resources: {}
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      memory: 64Mi
