@@ -7,3 +7,6 @@ tests/test-results/
 tests/playwright-report/
 tests/playwright/.cache/
 
+# Cygwin/MSYS2 crash dumps from bash.exe under Git Bash on Windows.
+*.stackdump
+
