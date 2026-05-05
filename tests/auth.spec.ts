@@ -51,7 +51,8 @@ test('login flow: / → keycloak → / → /oauth/userinfo', async ({ page }) =>
   await test.step('5. /page shows the user (sanity check on upstream headers)', async () => {
     await page.goto('/page');
     await expect(page.getByRole('heading', { name: /signed in/i })).toBeVisible();
-    await expect(page.getByText(USERNAME)).toBeVisible();
+    // X-Auth-Request-Email is reliably populated by oauth2-proxy.
+    await expect(page.getByText('test@example.com')).toBeVisible();
     await pause(page);
   });
 });

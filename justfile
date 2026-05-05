@@ -81,12 +81,18 @@ urls:
 # Tweak pacing with: just test slow_mo=300 step_pause_ms=500
 [windows]
 test slow_mo="800" step_pause_ms="1500": up
+    #!pwsh
+    $ErrorActionPreference = 'Stop'
     npm install --no-audit --no-fund
     npx playwright install chromium
-    pwsh -NoProfile -Command "$env:SLOW_MO='{{slow_mo}}'; $env:STEP_PAUSE_MS='{{step_pause_ms}}'; npx playwright test"
+    $env:SLOW_MO       = '{{slow_mo}}'
+    $env:STEP_PAUSE_MS = '{{step_pause_ms}}'
+    npx playwright test
 
 [unix]
 test slow_mo="800" step_pause_ms="1500": up
+    #!/usr/bin/env bash
+    set -euo pipefail
     npm install --no-audit --no-fund
     npx playwright install chromium
     SLOW_MO={{slow_mo}} STEP_PAUSE_MS={{step_pause_ms}} npx playwright test
@@ -94,12 +100,19 @@ test slow_mo="800" step_pause_ms="1500": up
 # Same as `test` but headless (for CI / quick checks).
 [windows]
 test-ci: up
+    #!pwsh
+    $ErrorActionPreference = 'Stop'
     npm install --no-audit --no-fund
     npx playwright install chromium
-    pwsh -NoProfile -Command "$env:HEADLESS='true'; $env:SLOW_MO='0'; $env:STEP_PAUSE_MS='0'; npx playwright test"
+    $env:HEADLESS      = 'true'
+    $env:SLOW_MO       = '0'
+    $env:STEP_PAUSE_MS = '0'
+    npx playwright test
 
 [unix]
 test-ci: up
+    #!/usr/bin/env bash
+    set -euo pipefail
     npm install --no-audit --no-fund
     npx playwright install --with-deps chromium
     HEADLESS=true SLOW_MO=0 STEP_PAUSE_MS=0 npx playwright test
