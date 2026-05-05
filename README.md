@@ -1,7 +1,12 @@
-# auth2-proxy
+# oauth2-proxy + keycloak
 
-Single-host docker-compose stack: **HAProxy** in front of **oauth2-proxy** and
-**Keycloak**, with **nginx** as the protected upstream.
+**HAProxy** in front of **oauth2-proxy** and **Keycloak**, with **nginx**
+as the protected upstream. Deployable two ways:
+
+- `docker-compose/` — single-host docker-compose stack.
+- `helm/oauth2-keycloak/` — Helm chart for Kubernetes (designed against
+  Red Hat MicroShift, whose router is HAProxy under the hood, so the
+  edge layer collapses into a stock `Ingress`).
 
 ```
 browser
@@ -70,18 +75,34 @@ just init && just up
 
 | path | what |
 | --- | --- |
-| `docker-compose.yml` | Service definitions |
-| `haproxy/haproxy.cfg` | Edge routing rules |
-| `oauth2-proxy/oauth2-proxy.cfg` | oauth2-proxy config (secrets via env) |
-| `keycloak/realm-export.json` | Pre-imported realm `proxy` with client + test user |
-| `nginx/default.conf`, `nginx/html/*` | Protected landing pages |
+| `docker-compose/docker-compose.yml` | Service definitions |
+| `docker-compose/haproxy/haproxy.cfg` | Edge routing rules |
+| `docker-compose/oauth2-proxy/oauth2-proxy.cfg` | oauth2-proxy config (secrets via env) |
+| `docker-compose/keycloak/realm-export.json` | Pre-imported realm `proxy` with client + test user |
+| `docker-compose/nginx/default.conf`, `docker-compose/nginx/html/*` | Protected landing pages |
+| `helm/oauth2-keycloak/` | Helm chart (Keycloak + oauth2-proxy + nginx + Ingress) |
 | `justfile` | `init`, `up`, `down`, `logs`, `urls`, `cookie-secret`, ... |
+| `tests/auth.spec.ts` | Playwright login-flow test |
+
+## Helm / Kubernetes
+
+```sh
+helm install auth2-proxy ./helm/oauth2-keycloak \
+    --set host=auth2.example.com
+```
+
+The chart drops the dedicated HAProxy pod and uses an `Ingress` resource
+instead. On MicroShift / OpenShift the Ingress is consumed by the
+HAProxy-based router; on stock Kubernetes it works with `ingress-nginx`
+or any other Ingress controller.
+
+See `helm/oauth2-keycloak/values.yaml` for tunables.
 
 ## Notes
 
 - **Plain HTTP** for the demo. Behind real TLS, set `cookie_secure = true`
-  in `oauth2-proxy/oauth2-proxy.cfg` and update `X-Forwarded-Proto` in
-  `haproxy/haproxy.cfg` to `https`.
+  in `docker-compose/oauth2-proxy/oauth2-proxy.cfg` and update
+  `X-Forwarded-Proto` in `docker-compose/haproxy/haproxy.cfg` to `https`.
 - The realm-export uses wildcard redirect URIs (`http://*/oauth/callback`)
   so any `HOST_IP` works without re-importing.
 - Keycloak's first start with `--import-realm` takes ~30s; HAProxy's

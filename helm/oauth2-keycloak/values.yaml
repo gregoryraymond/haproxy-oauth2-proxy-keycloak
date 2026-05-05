@@ -1,0 +1,60 @@
+# Public host users hit in their browser. Plain IP is fine — there is no
+# DNS in this scenario, so routing is by subpath (/auth, /oauth, /), not
+# by hostname.
+host: 127.0.0.1
+
+# Public port the Ingress controller is reachable on. Leave empty for
+# the standard port (80 plain / 443 TLS). Set to e.g. "30080" if exposing
+# the router via NodePort.
+port: ""
+
+# Set true if the Ingress terminates TLS. Affects:
+#   * scheme used in OIDC URLs (issuer / login / redirect)
+#   * X-Forwarded-Proto sent to upstreams
+#   * oauth2-proxy cookie_secure flag
+tls:
+  enabled: false
+  # When tls.enabled, supply a secretName that already exists in the
+  # namespace, OR leave empty and rely on the ingress controller's
+  # default certificate.
+  secretName: ""
+
+ingress:
+  # className: nginx                  # ingress-nginx
+  # className: openshift-default      # MicroShift / OpenShift router (HAProxy)
+  className: ""
+  annotations:
+    # oauth2-proxy's session cookie blows past ingress-nginx's default 4k
+    # response-header buffer, so /oauth/callback otherwise dies with a 502
+    # ("upstream sent too big header"). Harmless on other controllers.
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "16k"
+  # If your ingress controller refuses raw IPs in the `host` field,
+  # set this to a hostname that resolves to the node (e.g. via /etc/hosts
+  # or nip.io). Leave empty to use .Values.host directly.
+  hostOverride: ""
+
+keycloak:
+  image:
+    repository: quay.io/keycloak/keycloak
+    tag: "24.0"
+  admin:
+    username: admin
+    password: admin
+  resources: {}
+
+oauth2Proxy:
+  image:
+    repository: quay.io/oauth2-proxy/oauth2-proxy
+    tag: v7.6.0
+  clientId: oauth2-proxy
+  # Must match the realm-export client secret below.
+  clientSecret: oauth2-proxy-secret
+  # MUST be 16, 24, or 32 bytes. Generate with: openssl rand -hex 16
+  cookieSecret: "0123456789abcdef0123456789abcdef"
+  resources: {}
+
+nginx:
+  image:
+    repository: nginx
+    tag: 1.27-alpine
+  resources: {}

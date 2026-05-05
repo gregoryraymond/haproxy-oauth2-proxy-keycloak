@@ -1,0 +1,11 @@
+apiVersion: v2
+name: oauth2-keycloak
+description: oauth2-proxy + Keycloak + nginx demo, fronted by an Ingress.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - oauth2-proxy
+  - keycloak
+  - oidc
+  - microshift

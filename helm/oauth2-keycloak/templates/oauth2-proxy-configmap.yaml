@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "oauth2-keycloak.fullname" . }}-oauth2-proxy
+  labels:
+    {{- include "oauth2-keycloak.labels" . | nindent 4 }}
+    app.kubernetes.io/component: oauth2-proxy
+data:
+  ooauth2-keycloak.cfg: |
+    http_address = "0.0.0.0:4180"
+    reverse_proxy = true
+    proxy_prefix = "/oauth"
+
+    # Reverse-proxy authenticated traffic to the in-cluster nginx service.
+    upstreams = ["http://{{ include "oauth2-keycloak.fullname" . }}-nginx:80/"]
+
+    provider = "keycloak-oidc"
+    scope = "openid email profile"
+
+    # Public URLs (browser hits these via Ingress) vs. internal URLs
+    # (oauth2-proxy hits these inside the cluster). Same trick the
+    # docker-compose stack uses, just pointing at the K8s service DNS.
+    skip_oidc_discovery = true
+    redeem_url    = "http://{{ include "oauth2-keycloak.fullname" . }}-keycloak:8080/auth/realms/proxy/protocol/openid-connect/token"
+    profile_url   = "http://{{ include "oauth2-keycloak.fullname" . }}-keycloak:8080/auth/realms/proxy/protocol/openid-connect/userinfo"
+    validate_url  = "http://{{ include "oauth2-keycloak.fullname" . }}-keycloak:8080/auth/realms/proxy/protocol/openid-connect/userinfo"
+    oidc_jwks_url = "http://{{ include "oauth2-keycloak.fullname" . }}-keycloak:8080/auth/realms/proxy/protocol/openid-connect/certs"
+
+    skip_provider_button = true
+    email_domains = ["*"]
+
+    pass_user_headers = true
+    set_xauthrequest = true
+    pass_access_token = false
+
+    cookie_secure = {{ .Values.tls.enabled }}
+    cookie_httponly = true
+    cookie_samesite = "lax"
+    cookie_expire = "168h"
+    cookie_refresh = "60m"
+
+    real_client_ip_header = "X-Forwarded-For"

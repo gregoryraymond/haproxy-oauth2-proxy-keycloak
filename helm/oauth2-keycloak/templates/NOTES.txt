@@ -1,0 +1,13 @@
+{{ .Chart.Name }} ({{ .Chart.AppVersion }}) installed in namespace {{ .Release.Namespace }}.
+
+Public base URL: {{ include "oauth2-keycloak.publicUrl" . }}
+
+  Landing (auth required): {{ include "oauth2-keycloak.publicUrl" . }}/
+  Protected page:          {{ include "oauth2-keycloak.publicUrl" . }}/page
+  Keycloak admin:          {{ include "oauth2-keycloak.publicUrl" . }}/auth/admin/   ({{ .Values.keycloak.admin.username }} / {{ .Values.keycloak.admin.password }})
+  Sign out:                {{ include "oauth2-keycloak.publicUrl" . }}/oauth/sign_out
+
+Test user (from realm-export): test / test
+
+Wait for the keycloak pod's readiness probe to pass (~30s on first start)
+before browsing — `kubectl rollout status deploy/{{ include "oauth2-keycloak.fullname" . }}-keycloak`.

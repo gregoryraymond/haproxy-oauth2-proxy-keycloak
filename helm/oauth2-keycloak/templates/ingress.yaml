@@ -1,0 +1,53 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "oauth2-keycloak.fullname" . }}
+  labels:
+    {{- include "oauth2-keycloak.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- $host := include "oauth2-keycloak.ingressHost" . }}
+  {{- if and .Values.tls.enabled $host }}
+  tls:
+    - hosts:
+        - {{ $host | quote }}
+      {{- with .Values.tls.secretName }}
+      secretName: {{ . }}
+      {{- end }}
+  {{- end }}
+  rules:
+    - {{- if $host }}
+      host: {{ $host | quote }}
+      {{- end }}
+      http:
+        paths:
+          # Keycloak owns /auth/*.
+          - path: /auth
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "oauth2-keycloak.fullname" . }}-keycloak
+                port:
+                  number: 8080
+          # oauth2-proxy owns /oauth/* (its own callback / sign_in / sign_out).
+          - path: /oauth
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "oauth2-keycloak.fullname" . }}-oauth2-proxy
+                port:
+                  number: 4180
+          # Everything else flows through oauth2-proxy, which gates nginx.
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "oauth2-keycloak.fullname" . }}-oauth2-proxy
+                port:
+                  number: 4180

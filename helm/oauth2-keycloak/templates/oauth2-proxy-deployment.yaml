@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "oauth2-keycloak.fullname" . }}-oauth2-proxy
+  labels:
+    {{- include "oauth2-keycloak.labels" . | nindent 4 }}
+    app.kubernetes.io/component: oauth2-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "oauth2-keycloak.componentSelectorLabels" (dict "ctx" . "component" "oauth2-proxy") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "oauth2-keycloak.labels" . | nindent 8 }}
+        app.kubernetes.io/component: oauth2-proxy
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/oauth2-proxy-configmap.yaml") . | sha256sum }}
+    spec:
+      containers:
+        - name: oauth2-proxy
+          image: "{{ .Values.oauth2Proxy.image.repository }}:{{ .Values.oauth2Proxy.image.tag }}"
+          args:
+            - --config=/etc/oauth2-proxy/ooauth2-keycloak.cfg
+          envFrom:
+            - secretRef:
+                name: {{ include "oauth2-keycloak.fullname" . }}-oauth2-proxy
+          env:
+            - name: OAUTH2_PROXY_OIDC_ISSUER_URL
+              value: "{{ include "oauth2-keycloak.publicUrl" . }}/auth/realms/proxy"
+            - name: OAUTH2_PROXY_LOGIN_URL
+              value: "{{ include "oauth2-keycloak.publicUrl" . }}/auth/realms/proxy/protocol/openid-connect/auth"
+            - name: OAUTH2_PROXY_REDIRECT_URL
+              value: "{{ include "oauth2-keycloak.publicUrl" . }}/oauth/callback"
+            - name: OAUTH2_PROXY_WHITELIST_DOMAINS
+              value: {{ include "oauth2-keycloak.hostPort" . | quote }}
+          ports:
+            - name: http
+              containerPort: 4180
+          # The official image is distroless — no shell, wget, or nc — so
+          # we drive readiness via /ping over plain HTTP from the kubelet.
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          volumeMounts:
+            - name: config
+              mountPath: /etc/oauth2-proxy
+              readOnly: true
+          resources:
+            {{- toYaml .Values.oauth2Proxy.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "oauth2-keycloak.fullname" . }}-oauth2-proxy

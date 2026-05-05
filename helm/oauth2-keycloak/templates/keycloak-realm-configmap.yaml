@@ -1,0 +1,100 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "oauth2-keycloak.fullname" . }}-keycloak-realm
+  labels:
+    {{- include "oauth2-keycloak.labels" . | nindent 4 }}
+    app.kubernetes.io/component: keycloak
+data:
+  realm-export.json: |
+    {
+      "realm": "proxy",
+      "enabled": true,
+      "displayName": "auth2-proxy demo",
+      "registrationAllowed": false,
+      "loginWithEmailAllowed": true,
+      "duplicateEmailsAllowed": false,
+      "resetPasswordAllowed": false,
+      "editUsernameAllowed": false,
+      "verifyEmail": false,
+      "sslRequired": "none",
+      "accessTokenLifespan": 300,
+      "ssoSessionIdleTimeout": 1800,
+      "ssoSessionMaxLifespan": 36000,
+      "defaultSignatureAlgorithm": "RS256",
+
+      "clients": [
+        {
+          "clientId": {{ .Values.oauth2Proxy.clientId | quote }},
+          "name": {{ .Values.oauth2Proxy.clientId | quote }},
+          "enabled": true,
+          "protocol": "openid-connect",
+          "clientAuthenticatorType": "client-secret",
+          "secret": {{ .Values.oauth2Proxy.clientSecret | quote }},
+          "publicClient": false,
+          "bearerOnly": false,
+          "standardFlowEnabled": true,
+          "implicitFlowEnabled": false,
+          "directAccessGrantsEnabled": false,
+          "serviceAccountsEnabled": false,
+          "consentRequired": false,
+          "frontchannelLogout": false,
+          "redirectUris": [
+            "{{ include "oauth2-keycloak.publicUrl" . }}/oauth/callback"
+          ],
+          "webOrigins": ["+"],
+          "attributes": {
+            "post.logout.redirect.uris": "+",
+            "use.refresh.tokens": "true",
+            "backchannel.logout.session.required": "true"
+          },
+          "defaultClientScopes": ["web-origins", "acr", "roles", "profile", "email"],
+          "optionalClientScopes": ["address", "phone", "offline_access", "microprofile-jwt"],
+          "protocolMappers": [
+            {
+              "name": "audience-oauth2-proxy",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-audience-mapper",
+              "consentRequired": false,
+              "config": {
+                "included.client.audience": {{ .Values.oauth2Proxy.clientId | quote }},
+                "id.token.claim": "true",
+                "access.token.claim": "true"
+              }
+            },
+            {
+              "name": "groups",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-group-membership-mapper",
+              "consentRequired": false,
+              "config": {
+                "full.path": "false",
+                "id.token.claim": "true",
+                "access.token.claim": "true",
+                "userinfo.token.claim": "true",
+                "claim.name": "groups"
+              }
+            }
+          ]
+        }
+      ],
+
+      "users": [
+        {
+          "username": "test",
+          "enabled": true,
+          "emailVerified": true,
+          "email": "test@example.com",
+          "firstName": "Test",
+          "lastName": "User",
+          "credentials": [
+            {
+              "type": "password",
+              "value": "test",
+              "temporary": false
+            }
+          ],
+          "realmRoles": ["default-roles-proxy"]
+        }
+      ]
+    }
